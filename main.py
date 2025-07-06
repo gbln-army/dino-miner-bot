@@ -56,4 +56,3 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(handle_buttons))
 
     app.run_polling()
-app.add_handler(CallbackQueryHandler(handle_buttons))
