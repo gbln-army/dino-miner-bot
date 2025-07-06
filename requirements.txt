@@ -1,3 +1,2 @@
 flask
-python-telegram-bot==13.7
-img==1.6.0
+python-telegram-bot==20.3
