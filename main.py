@@ -1,5 +1,7 @@
 from flask import Flask, request
 from telegram import Bot, Update
+import telegram
+telegram.__file__ = telegram.__file__.replace("telegram", "")
 import os, json, time
 
 TOKEN = os.environ.get("BOT_TOKEN", "PUT-YOUR-TOKEN-HERE")
