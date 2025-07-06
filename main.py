@@ -1,65 +1,41 @@
-from flask import Flask, request import telegram import os import json import time
+from flask import Flask, request
+from telegram import Bot, Update
+import os, json, time
 
-TOKEN = os.environ.get("BOT_TOKEN", "PUT_YOUR_BOT_TOKEN_HERE") bot = telegram.Bot(token=TOKEN) app = Flask(name)
+TOKEN = os.environ.get("BOT_TOKEN", "PUT-YOUR-TOKEN-HERE")
+bot = Bot(token=TOKEN)
+app = Flask(__name__)
 
-DATA_FILE = "userdata.json" MINE_COOLDOWN = 8 * 60 * 60 LEVEL_THRESHOLDS = [10, 25, 45, 70, 100, 130, 170, 210, 260, 320]  # Total exp thresholds per level DINO_CHARACTERS = [ ("Baby Raptor", "🐣"), ("Tricera Rookie", "🦕"), ("Speed Raptor", "🦖"), ("Spino Miner", "🐊"), ("Horned Crusher", "🦖💥"), ("T-Rex Tycoon", "👑🦖"), ("Magma Raptor", "🔥🦖"), ("Frozen Spino", "❄️🦕"), ("Cyber Raptor", "🤖🦖"), ("Darkzilla", "🐉🌑"), ("God Dino", "🌟🦕👑") ]
+DATA_FILE = "userdata.json"
+MINE_COOLDOWN = 8 * 60 * 60
+MINE_REWARD = 10
 
-Load user data
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
 
-def load_data(): if not os.path.exists(DATA_FILE): return {} with open(DATA_FILE, "r") as f: return json.load(f)
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
-Save user data
+@app.route("/", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    user_id = str(update.effective_user.id)
+    data = load_data()
 
-def save_data(data): with open(DATA_FILE, "w") as f: json.dump(data, f)
+    now = time.time()
+    last_mine = data.get(user_id, {}).get("last_mine", 0)
 
-Calculate level from exp
-
-def get_level(exp): level = 1 for threshold in LEVEL_THRESHOLDS: if exp >= threshold: level += 1 else: break return min(level, 100)
-
-Get character based on level
-
-def get_character(level): index = min(level // 10, len(DINO_CHARACTERS)-1) return DINO_CHARACTERS[index]
-
-@app.route("/", methods=["POST"]) def webhook(): update = telegram.Update.de_json(request.get_json(force=True), bot) chat_id = str(update.message.chat.id) text = update.message.text
-
-data = load_data()
-if chat_id not in data:
-    data[chat_id] = {
-        "exp": 0,
-        "gold": 0,
-        "last_mine": 0
-    }
-
-user = data[chat_id]
-level = get_level(user["exp"])
-character_name, character_emoji = get_character(level)
-
-if text == "/start":
-    bot.send_message(chat_id, f"Welcome to Dino Miner!\nYou are: {character_name} {character_emoji}\nType /mine to start mining.")
-
-elif text == "/mine":
-    now = int(time.time())
-    if now - user["last_mine"] >= MINE_COOLDOWN:
-        user["last_mine"] = now
-        user["gold"] += 10 + level
-        user["exp"] += 5
-        level = get_level(user["exp"])
-        character_name, character_emoji = get_character(level)
+    if now - last_mine >= MINE_COOLDOWN:
+        total = data.get(user_id, {}).get("total", 0) + MINE_REWARD
+        data[user_id] = {"last_mine": now, "total": total}
         save_data(data)
-        bot.send_message(chat_id, f"⛏️ You mined {(10 + level)} GBLN and earned 5 EXP!\nLevel: {level} - {character_name} {character_emoji}")
+        bot.send_message(chat_id=update.effective_chat.id, text=f"⛏️ You mined {MINE_REWARD} GBLN!\nTotal: {total} GBLN")
     else:
-        remaining = MINE_COOLDOWN - (now - user["last_mine"])
-        h = remaining // 3600
-        m = (remaining % 3600) // 60
-        bot.send_message(chat_id, f"⏳ You need to wait {h}h {m}m before mining again.")
+        remaining = int(MINE_COOLDOWN - (now - last_mine))
+        bot.send_message(chat_id=update.effective_chat.id, text=f"⏳ Wait {remaining // 60} min to mine again.")
 
-elif text == "/balance":
-    bot.send_message(chat_id, f"💰 Gold: {user['gold']}\n⭐ EXP: {user['exp']}\n🎖️ Level: {level}\n🦕 Character: {character_name} {character_emoji}")
-
-else:
-    bot.send_message(chat_id, "Unknown command. Try /mine or /balance")
-
-return "ok"
-
-if name == "main": app.run(debug=True)
-
+    return "OK"
